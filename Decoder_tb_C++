@@ -1,0 +1,28 @@
+
+#include "decode.h"
+ #include <stdbool.h>
+#include <math.h>
+
+
+int main () {
+
+
+
+  din_t rx[N] = {1.1700 , -0.0300, -0.8200, 1.8600, 0.1200,-2.2100,1.1200 ,0.7200};
+
+  dout_t data[N];
+	int i ;
+
+
+
+	// Call the function to operate on the data
+	decode(rx,data);
+
+	// Save the results to a file
+
+
+	for (i=0;i<N;i++) {
+    fprintf(stdout,"%f   %d\n", rx[i], data[i]);
+	}
+
+}
