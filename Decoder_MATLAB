@@ -1,0 +1,141 @@
+clc
+clear all;
+iteration = 2;
+H = [1 1 0 0 1 1 1 0;
+    0 1 1 1 0 0 0 0;
+    0 0 1 0 1 0 1 1;
+    0 0 0 1 0 1 1 1];
+B = H;
+[rowB, colB] = size(B);
+set_dc = sum(B,2)';
+set_dv = sum(B);
+Num_edge = sum(sum(B));
+[row_inx col_inx] = find(B==1);
+
+%%%%%%%%%%%%% Example %%%%%%%%%%%%
+var = 0.79;
+tx = [1 1 -1 1 1 -1 1 -1];
+n = [0.17 -1.03 0.18 0.86 -0.88 -1.21 0.12 1.72];
+rx = tx + n;
+%%%%% map y to LLR
+L_ch =(-2/var).*rx;
+
+%% 1 bit quantizer(hard decision)   
+L_q = (L_ch > 0) + 1;
+
+%%%%%%%%%%%%%%%% decoding Process
+CN_LUT = [2 1;
+          1 2];
+VN_LUT = [1 1;
+          2 2];
+%%%%% send LLR to check nodes in the first iteration 
+for i = 1:Num_edge
+    for j = 1:colB
+       inx_tem = find(col_inx==j);
+       len = length(inx_tem);
+       Lvn(inx_tem) = L_q(j).*ones(1,len); 
+    end
+end
+
+for iter = 1:iteration
+    %%%%%% check node process
+    for i = 1:rowB
+        inx_VN = find(row_inx == i)
+        num_connected_VN = length(inx_VN);
+        cnt_j = 1;
+        for j = 1:num_connected_VN-1
+            if j == 1
+                %%%% compute Forward/Backward check node process firstly.
+                for j1 = 1:num_connected_VN - 2 % number of table = d_c - 2
+                    if j1 == 1 %% firstly assign p_tem0 and p_tem1
+                        L_temFL = Lvn(inx_VN(1));
+                        L_temBL = Lvn(inx_VN(num_connected_VN));
+                    else
+                        L_temFL = L_updateFL;
+                        L_temBL = L_updateBL;
+                    end                                 
+                    L_updateFL = CN_LUT(L_temFL,Lvn(inx_VN(j1+1)));
+                    L_updateBL = CN_LUT(L_temBL,Lvn(inx_VN(num_connected_VN - j1)));
+                    
+                    T_temFL(j1+1) = L_updateFL;
+                    T_temBL(j1+1) = L_updateBL;
+                    if j1 == num_connected_VN - 2
+                        T_temFL(1) = Lvn(inx_VN(1));
+                        T_temBL(1) = Lvn(inx_VN(num_connected_VN));
+                        Lcn(inx_VN(1)) = L_updateBL;
+                        Lcn(inx_VN(num_connected_VN)) = L_updateFL;
+                    end
+                end
+            end
+            if j > 1
+                %%%% compute merge check node
+                p_temFL = T_temFL(j-1);
+                p_temBL = T_temBL(num_connected_VN-j);
+                L_updateML = CN_LUT(p_temFL,p_temBL);
+                Lcn(inx_VN(j)) = L_updateML;
+            end
+        end
+    end
+    Lvn = 0;
+    if iter < iteration
+        %%%%%% variable node process
+        for i = 1:colB
+            inx_CN = find(col_inx == i);
+            num_connected_CN = length(inx_CN);
+            if num_connected_CN - 1 == 0
+               Lvn(inx_CN(num_connected_CN)) = L_q(i);
+            else
+                for j = 1:num_connected_CN
+                    if j == 1
+                        for j1 = 1:num_connected_CN - 1
+                            if j1 == 1
+                                L_temFL = L_q(i);
+                                L_temBL = Lcn(inx_CN(num_connected_CN));
+                            else
+                                L_temFL = L_updateFL;
+                                L_temBL = L_updateBL;
+                            end       
+                            L_updateFL = VN_LUT(L_temFL,Lcn(inx_CN(j1)));
+                            L_updateBL = VN_LUT(L_temBL,Lcn(inx_CN(num_connected_CN-j1)));
+                            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                            T_temFL(j1+1) = L_updateFL;
+                            T_temBL(j1+1) = L_updateBL;
+                            if j1 == num_connected_CN-1
+                                T_temFL(1) = L_q(i);
+                                T_temBL(1) = Lcn(inx_CN(num_connected_CN));
+                                Lvn(inx_CN(num_connected_CN)) = L_updateFL;
+                            end
+                        end
+                    end
+                    if j>1
+                        p_temFL = T_temFL(j-1);
+                        p_temBL = T_temBL(num_connected_CN-j+1);
+                        L_updateML = VN_LUT(p_temFL,p_temBL);
+                        Lvn(inx_CN(j-1)) = L_updateML;
+                    end
+                end
+            end
+        end
+    else
+        for i = 1:colB
+            inx_CN = find(col_inx == i);
+            num_connected_CN = length(inx_CN);
+            for j1 = 1:num_connected_CN
+                if j1 == 1
+                    L_temFL = L_q(i);
+                else
+                    L_temFL = L_updateFL;
+                end
+                L_updateFL = VN_LUT(L_temFL,Lcn(inx_CN(j1)));
+            end
+            L_app(i) = L_updateFL;
+            Estimated_bit(i) = L_app(i) < 1.5;
+        end
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%   
+    end
+end
+L_app
+Estimated_bit
+
+
+
